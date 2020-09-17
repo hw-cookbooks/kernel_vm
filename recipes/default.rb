@@ -28,18 +28,14 @@ unless node['kernel_vm']['boxes'].empty?
   include_recipe 'kernel_vm::box_expander'
 end
 
-kvm_mod = if node['kernel_vm']['module']
-            node['kernel_vm']['module']
-          else
-            case node.cpu['0'].vendor_id
-            when 'GenuineIntel'
-              'kvm-intel'
-            when 'AuthenticAMD'
-              'kvm-amd'
-            else
-              raise 'Please explicitly define module to load'
-            end
-          end
+kvm_mod = node['kernel_vm']['module'] || case node.cpu['0'].vendor_id
+                                         when 'GenuineIntel'
+                                           'kvm-intel'
+                                         when 'AuthenticAMD'
+                                           'kvm-amd'
+                                         else
+                                           raise 'Please explicitly define module to load'
+                                         end
 
 execute "kernel_vm module load[#{kvm_mod}]" do
   command "modprobe #{kvm_mod}"
