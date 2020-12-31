@@ -53,4 +53,3 @@ node['kernel_vm']['boxes'].each do |remote|
     backup false
   end
 end
-
