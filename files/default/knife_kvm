@@ -22,12 +22,12 @@ opts = GetoptLong.new(
 
 # Default
 available_templates = Dir.glob(File.join(KVM_TEMPLATES, '*.qcow2'))
-template = available_templates.detect{|t|t.include?('precise')} || available_templates.first
+template = available_templates.detect { |t| t.include?('precise') } || available_templates.first
 
 options = {
-  :memory => 512,
-  :vcpus => 1,
-  :maxvcpus => 1
+  memory: 512,
+  vcpus: 1,
+  maxvcpus: 1,
 }
 
 opts.each do |opt, arg|
@@ -62,7 +62,7 @@ end
 
 # Returns libvirt instance
 def virt
-  @virt ||= Libvirt::open('qemu:///system')
+  @virt ||= Libvirt.open('qemu:///system')
 end
 
 # kvm_name:: Name of KVM instance
@@ -92,13 +92,13 @@ end
 # Returns array of available IP addresses
 def available_ips
   range = conf['addresses']['range']
-  unless(range.to_s.empty?)
-    range = (range.split('-').first.split('.').last..range.split('-').last).map{|oct|
-      "#{range.split('-').first.split('.').slice(0,3).join('.')}.#{oct}"
-    }
-  else
-    range = []
-  end
+  range = if range.to_s.empty?
+            []
+          else
+            (range.split('-').first.split('.').last..range.split('-').last).map do |oct|
+              "#{range.split('-').first.split('.').slice(0, 3).join('.')}.#{oct}"
+            end
+          end
   (conf['addresses']['static'] + range).compact
 end
 
@@ -126,22 +126,22 @@ def update_network_interfaces(name, address)
   (parts = address.split('.')).last.replace('1')
   default_gw = parts.join('.')
   File.open(File.join(KVM_MOUNT_POINT, name, 'etc', 'network', 'interfaces'), 'w') do |file|
-    file.puts "auto lo eth0"
-    file.puts "iface lo inet loopback"
-    file.puts "iface eth0 inet static"
+    file.puts 'auto lo eth0'
+    file.puts 'iface lo inet loopback'
+    file.puts 'iface eth0 inet static'
     file.puts "  address #{address}"
     file.puts "  gateway #{conf['gateway'] || default_gw}"
     file.puts "  netmask #{conf['netmask'] || default_nm}"
     file.puts "  dns-nameservers #{Array(conf['nameserver'] || default_gw).join(' ')}"
   end
   File.open(pinger = File.join(KVM_MOUNT_POINT, name, 'etc', 'network', 'if-up.d', '001base-pinger'), 'w') do |file|
-    file.puts "#!/bin/sh"
+    file.puts '#!/bin/sh'
     file.puts "/bin/ping -c 1 #{local_ip_address} > /dev/null"
   end
   File.chmod(0755, pinger)
   File.open(File.join(KVM_MOUNT_POINT, name, 'etc', 'cron.d', 'base-pinger'), 'w') do |file|
     file.puts "* * * * * root /bin/ping -c 1 #{local_ip_address} > /dev/null"
-    file.puts ""
+    file.puts ''
   end
   hosts = File.readlines(hosts_path = File.join(KVM_MOUNT_POINT, name, 'etc', 'hosts'))
   File.open(hosts_path, 'w') do |file|
@@ -153,7 +153,7 @@ end
 # Returns IP address of local node
 def local_ip_address
   conf['base_address'] ||
-  %x{ip addr show #{conf['base_interface'] || 'br0'} | grep inet}.split(' ')[1].to_s.strip.split('/').first.to_s
+    `ip addr show #{conf['base_interface'] || 'br0'} | grep inet`.split(' ')[1].to_s.strip.split('/').first.to_s
 end
 
 # name:: Name of KVM instance
@@ -169,11 +169,11 @@ end
 # NOTE: This is upstart only right now
 def make_console_accessible(name)
   File.open(File.join(KVM_MOUNT_POINT, name, 'etc', 'init', 'ttys0.conf'), 'w') do |file|
-    file.puts "start on stopped rc RUNLEVEL=[2345]"
-    file.puts "stop on runlevel [!2345]"
+    file.puts 'start on stopped rc RUNLEVEL=[2345]'
+    file.puts 'stop on runlevel [!2345]'
     file.puts
-    file.puts "respawn"
-    file.puts "exec /sbin/getty -L 38400 ttyS0 vt102"
+    file.puts 'respawn'
+    file.puts 'exec /sbin/getty -L 38400 ttyS0 vt102'
   end
 end
 
@@ -195,10 +195,10 @@ end
 # Unmounts the KVM volume
 def unmount(name)
   mount_loc = File.join(KVM_MOUNT_POINT, name)
-  if(system("umount #{mount_loc}"))
+  if system("umount #{mount_loc}")
     true
   else
-    raise "Failed to unmount kvm drive"
+    raise 'Failed to unmount kvm drive'
   end
 end
 
@@ -221,12 +221,12 @@ end
 def available_dev
   dev = nil
   (0..15).to_a.each do |i|
-    if(%x{sfdisk -s /dev/nbd#{i}}.to_i == 0)
+    if `sfdisk -s /dev/nbd#{i}`.to_i == 0
       dev = "/dev/nbd#{i}"
       break
     end
   end
-  dev ? dev : raise("Failed to locate available network block device to bind")
+  dev || raise('Failed to locate available network block device to bind')
 end
 
 # name:: Name of KVM instance
@@ -234,7 +234,7 @@ end
 # Enables net block device
 def enable_netblockdev(name, dev)
   res = system "kvm-nbd -c #{dev} #{File.join(KVM_HOME, 'storage', "#{name}.qcow2")}"
-  raise "Failed to attach image to network block device server" unless res
+  raise 'Failed to attach image to network block device server' unless res
   puts "Attached net block device: #{dev}"
 end
 
@@ -242,34 +242,34 @@ end
 # Detaches net block device
 def disable_netblockdev(dev)
   res = system "nbd-client -d #{dev}"
-  raise "Failed to detach image from network block device server" unless res
+  raise 'Failed to detach image from network block device server' unless res
   puts "Detached net block device: #{dev}"
 end
 
 # dev:: Attached net block device
 # Locates LVM partition
-def lvm_partition(dev)
-  part = %x{sfdisk -l /dev/nbd0 2>/dev/null | grep 8e | cut -d ' ' -f 1}.strip
-  part.empty? ? raise("Failed to locate LVM partition") : part
+def lvm_partition(_dev)
+  part = `sfdisk -l /dev/nbd0 2>/dev/null | grep 8e | cut -d ' ' -f 1`.strip
+  part.empty? ? raise('Failed to locate LVM partition') : part
 end
 
 # partition:: Partition name
 # Determines Volume Group name of partition
 def lvm_volume_group(partition)
-  %x{pvs --noheadings --separator ' ' #{partition} 2>/dev/null| sed -e 's/^\s*//' | cut -d ' ' -f 2}.strip
+  `pvs --noheadings --separator ' ' #{partition} 2>/dev/null| sed -e 's/^\s*//' | cut -d ' ' -f 2`.strip
 end
 
 # volume_group:: LVM Volume Group
 # Determines root within LVM
 def lvm_root(volume_group)
-  %x{lvdisplay #{volume_group} 2>/dev/null| grep root}.split(' ').last.strip
+  `lvdisplay #{volume_group} 2>/dev/null| grep root`.split(' ').last.strip
 end
 
 # root:: Root within LVM
 # Returns is LVM is available
 def lvm_enabled?(root)
   puts "Checking if volume group is available for: #{root}"
-  %x{lvscan | grep #{root}}.split(' ').first == 'ACTIVE'
+  `lvscan | grep #{root}`.split(' ').first == 'ACTIVE'
 end
 
 # volume_group:: Name of volume group
@@ -286,16 +286,16 @@ end
 def mount(name, root_dev)
   puts "Mounting KVM device: #{root_dev}"
   mount_loc = File.join(KVM_MOUNT_POINT, name)
-  unless(system("mount | grep #{mount_loc}"))
+  if system("mount | grep #{mount_loc}")
+    puts "Device already mounted (#{mount_loc})"
+    mount_loc
+  else
     FileUtils.mkdir_p(mount_loc)
-    if(system("mount #{root_dev} #{mount_loc}"))
+    if system("mount #{root_dev} #{mount_loc}")
       mount_loc
     else
       raise "Failed to mount #{root_dev} to #{mount_loc}"
     end
-  else
-    puts "Device already mounted (#{mount_loc})"
-    mount_loc
   end
 end
 
@@ -309,13 +309,13 @@ end
 # name:: Name of KVM instance
 # Returns MAC address of KVM instance
 def node_mac(name)
-  %x{grep 'mac address' /etc/libvirt/qemu/#{name}.xml 2>/dev/null}.match(/((..:){5}..)/).to_s
+  `grep 'mac address' /etc/libvirt/qemu/#{name}.xml 2>/dev/null`.match(/((..:){5}..)/).to_s
 end
 
 # mac:: MAC address
 # Returns IP address used by provided MAC address
 def ip_by_mac(mac)
-  %x{arp -a | grep #{mac}}.split(' ')[1].to_s.sub('(', '').sub(')', '')
+  `arp -a | grep #{mac}`.split(' ')[1].to_s.sub('(', '').sub(')', '')
 end
 
 # name:: Name of KVM instance
@@ -323,7 +323,7 @@ end
 def ip_by_mount(name)
   dev = available_dev unless mounted?(name)
   loc = mount(name, dev)
-  addr = %x{cat #{File.join(loc, 'etc', 'network', 'interfaces')} | grep address}.split(' ').last.to_s.strip
+  addr = `cat #{File.join(loc, 'etc', 'network', 'interfaces')} | grep address`.split(' ').last.to_s.strip
   unmount_kvm_volume(name, dev) if dev
   addr
 end
@@ -338,19 +338,19 @@ end
 # name:: Name of KVM instance
 # opts:: Configuration options
 # Creates and starts the KVM instance
-def create_kvm_instance(name, opts={})
+def create_kvm_instance(name, opts = {})
   cmd = "virt-install -n #{name} --ram #{opts[:memory]} --disk " <<
-    "path=#{File.join(KVM_HOME, 'storage', "#{name}.qcow2")},device=disk,bus=virtio,format=qcow2 " <<
-    "-v --import --noautoconsole --vcpus=#{opts[:vcpus]},maxvcpus=#{opts[:maxvcpus]}" 
-  unless(system(cmd))
-    raise "Failed to create KVM instance!"
-  end 
+        "path=#{File.join(KVM_HOME, 'storage', "#{name}.qcow2")},device=disk,bus=virtio,format=qcow2 " <<
+        "-v --import --noautoconsole --vcpus=#{opts[:vcpus]},maxvcpus=#{opts[:maxvcpus]}"
+  unless system(cmd)
+    raise 'Failed to create KVM instance!'
+  end
 end
 
 # name:: Name of KVM instance
 # Starts the KVM instance
 def start_kvm(name)
-  unless(system("virsh start #{name}"))
+  unless system("virsh start #{name}")
     raise "Failed to start node: #{name}"
   end
 end
@@ -361,7 +361,7 @@ end
 # for attempt via shutdown with timeout to
 # destroy
 def stop_kvm(name)
-  unless(system("virsh destroy #{name}"))
+  unless system("virsh destroy #{name}")
     raise "Failed to stop node: #{name}"
   end
 end
@@ -386,11 +386,11 @@ end
 # Returns OS type of KVM instance
 def kvm_type(name)
   base = File.join(KVM_HOME, name, 'rootfs', 'etc')
-  if(File.exists?(lsb = File.join(base, 'lsb-release')))
+  if File.exist?(lsb = File.join(base, 'lsb-release'))
     File.readlines(lsb).last.split('=').last.strip.gsub('"', '')
-  elsif(File.exists?(sys_rel = File.join(base, 'system-release')))
+  elsif File.exist?(sys_rel = File.join(base, 'system-release'))
     File.readlines(sys_rel).first.strip
-  elsif(File.exists?(deb_ver = File.join(base, 'debian_version')))
+  elsif File.exist?(deb_ver = File.join(base, 'debian_version'))
     "Debain #{File.read(deb_ver).strip}"
   else
     'UNKNOWN'
@@ -400,12 +400,12 @@ end
 # Returns list of existing KVMs
 def list_kvms
   info = Hash[
-    *Dir.glob(File.join(KVM_HOME, 'storage', '*.qcow2')).map{|dir|
+    *Dir.glob(File.join(KVM_HOME, 'storage', '*.qcow2')).map do |dir|
       key = File.basename(dir).sub('.qcow2', '')
-      [key, {:address => kvm_ip(key), :type => kvm_type(key)}]
-    }.sort{|a,b|
+      [key, { address: kvm_ip(key), type: kvm_type(key) }]
+    end.sort  do |a, b|
       a.first <=> b.first
-    }.flatten
+    end.flatten
   ]
   info.each do |name, info|
     puts "#{name}"
@@ -427,7 +427,7 @@ end
 def destroy_kvm(kvm_name)
   [
     "virsh destroy #{kvm_name}",
-    "virsh undefine #{kvm_name}"
+    "virsh undefine #{kvm_name}",
   ].each do |cmd|
     raise "Failed to delete node: #{kvm_name}" unless system(cmd)
   end
@@ -444,44 +444,43 @@ when 'list'
   list_kvms
 when 'info'
   kvm_name = ARGV[1]
-  if(kvm_exists?(kvm_name))
+  if kvm_exists?(kvm_name)
     info_kvm(kvm_name)
   else
-    $stderr.puts "Requested kvm does not exist: #{kvm_name}"
+    warn "Requested kvm does not exist: #{kvm_name}"
     exit 2
   end
 when 'start'
   kvm_name = ARGV[1]
-  if(kvm_exists?(kvm_name))
+  if kvm_exists?(kvm_name)
     print "Starting kvm #{kvm_name}... "
     start_kvm(kvm_name)
     puts 'started'
   else
-    $stderr.puts "Requested kvm does not exist: #{kvm_name}"
+    warn "Requested kvm does not exist: #{kvm_name}"
     exit 2
   end
 when 'stop'
   kvm_name = ARGV[1]
-  if(kvm_exists?(kvm_name))
+  if kvm_exists?(kvm_name)
     print "Stopping kvm #{kvm_name}... "
     stop_kvm(kvm_name)
     puts 'stopped'
   else
-    $stderr.puts "Requested kvm does not exist: #{kvm_name}"
+    warn "Requested kvm does not exist: #{kvm_name}"
     exit 2
   end
 when 'delete'
   kvm_name = ARGV[1]
-  if(kvm_exists?(kvm_name))
+  if kvm_exists?(kvm_name)
     print "Deleting KVM #{kvm_name}... "
     destroy_kvm(kvm_name)
     puts 'done'
   else
-    $stderr.puts "Requested kvm does not exist: #{kvm_name}"
+    warn "Requested kvm does not exist: #{kvm_name}"
     exit 2
   end
 else
-  $stderr.puts "ERROR: Unknown action: #{action}"
+  warn "ERROR: Unknown action: #{action}"
   exit 1
 end
-
